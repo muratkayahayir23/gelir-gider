@@ -1,0 +1,45 @@
+@import "tailwindcss";
+/* ApexCharts toolbar için siyah temaya özel görünür yazılar */
+.apexcharts-menu {
+  background-color: #1f2937 !important; /* bg-gray-800 */
+  border: 1px solid #374151 !important; /* border-gray-700 */
+  color: #e5e7eb !important;            /* text-gray-200 */
+}
+
+.apexcharts-menu-item:hover {
+  background-color: #374151 !important; /* hover rengi */
+  color: #fff !important;
+}
+/* === ApexCharts Dark Mode Fix === */
+
+/* Legend yazıları */
+.apexcharts-legend-text {
+  color: #e5e7eb !important; /* text-gray-200 */
+  font-weight: 500;
+}
+
+/* X ve Y axis yazıları */
+.apexcharts-xaxis text,
+.apexcharts-yaxis text {
+  fill: #e5e7eb !important; /* açık gri */
+  color: #e5e7eb !important;
+}
+
+/* Axis çizgileri */
+.apexcharts-gridline,
+.apexcharts-xaxis line,
+.apexcharts-yaxis line {
+  stroke: #4b5563 !important; /* gray-600 */
+}
+
+/* Tooltip Dark Mode */
+.apexcharts-tooltip {
+  background: #1f2937 !important; /* gray-800 */
+  color: white !important;
+  border: 1px solid #4b5563 !important;
+}
+
+/* Bar üzerindeki value label */
+.apexcharts-bar-area text {
+  fill: #fff !important; /* beyaz text */
+}
