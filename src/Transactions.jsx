@@ -6,6 +6,7 @@ function Transactions() {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [desc, setDesc] = useState("");
+  const [donor, setDonor] = useState(""); // 🎯 YENİ
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
@@ -20,18 +21,24 @@ function Transactions() {
   const save = async () => {
     if (!amount || !category) return;
 
+    const selectedCat = categories.find((x) => x.id === category);
+
     await addDoc(collection(db, "transactions"), {
       amount: Number(amount),
       categoryId: category,
       date: new Date(),
       description: desc,
-      type: categories.find((x) => x.id === category).type,
+      type: selectedCat.type,
+      donor: selectedCat.name === "bağış" ? donor : null // 🎯 YENİ
     });
 
     setAmount("");
     setCategory("");
     setDesc("");
+    setDonor("");
   };
+
+  const selectedCategory = categories.find((x) => x.id === category);
 
   return (
     <div className="bg-gray-800 p-6 rounded-xl shadow-lg space-y-4">
@@ -58,6 +65,16 @@ function Transactions() {
             </option>
           ))}
         </select>
+
+        {/* 🎯 Eğer kategori bağış ise Bağışçı Adı alanı göster */}
+        {selectedCategory?.name === "bağış" && (
+          <input
+            className="p-2 rounded-md bg-gray-700 text-white border border-gray-600"
+            placeholder="Bağışçı Adı"
+            value={donor}
+            onChange={(e) => setDonor(e.target.value)}
+          />
+        )}
 
         <input
           className="p-2 rounded-md bg-gray-700 text-white border border-gray-600"

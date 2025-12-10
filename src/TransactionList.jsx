@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { db } from "./firebase";
 import { collection, getDocs, doc, deleteDoc, updateDoc } from "firebase/firestore";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 function TransactionList() {
   const [transactions, setTransactions] = useState([]);
@@ -12,6 +14,8 @@ function TransactionList() {
     categoryId: "",
     type: "expense"
   });
+  const [selectedMonth, setSelectedMonth] = useState("all");
+  const [selectedYear, setSelectedYear] = useState("all");
 
   const loadData = async () => {
     const catSnap = await getDocs(collection(db, "categories"));
@@ -32,7 +36,6 @@ function TransactionList() {
     loadData();
   }, []);
 
-  // Silme
   const deleteTransaction = async (id) => {
     if (!window.confirm("Bu işlemi silmek istediğinize emin misiniz?")) return;
 
@@ -44,7 +47,6 @@ function TransactionList() {
     }
   };
 
-  // Düzenleme modunu aç
   const startEdit = (t) => {
     setEditingId(t.id);
     setEditForm({
@@ -55,7 +57,6 @@ function TransactionList() {
     });
   };
 
-  // Düzenlemeyi iptal et
   const cancelEdit = () => {
     setEditingId(null);
     setEditForm({
@@ -66,7 +67,6 @@ function TransactionList() {
     });
   };
 
-  // Düzenlemeyi kaydet
   const saveEdit = async (id) => {
     if (!editForm.amount || !editForm.description || !editForm.categoryId) {
       alert("Lütfen tüm alanları doldurun!");
@@ -107,16 +107,117 @@ function TransactionList() {
     }).format(date);
   };
 
+  const getDonations = () => {
+    return transactions.filter(t => {
+      const cat = categories.find(c => c.id === t.categoryId);
+      if (cat?.name !== "bağış") return false;
+
+      const month = t.date.getMonth();
+      const year = t.date.getFullYear();
+
+      if (selectedMonth !== "all" && month !== parseInt(selectedMonth)) return false;
+      if (selectedYear !== "all" && year !== parseInt(selectedYear)) return false;
+
+      return true;
+    });
+  };
+
+  const getAvailableYears = () => {
+    const donations = transactions.filter(t => 
+      categories.find(c => c.id === t.categoryId)?.name === "bağış"
+    );
+    const years = [...new Set(donations.map(t => t.date.getFullYear()))];
+    return years.sort((a, b) => b - a);
+  };
+
+  const downloadPDF = () => {
+    const donations = getDonations();
+    
+    if (donations.length === 0) {
+      alert("İndirilecek bağış bulunmuyor!");
+      return;
+    }
+
+    try {
+      const doc = new jsPDF();
+
+      doc.setFont("helvetica");
+      
+      doc.setFontSize(18);
+      doc.setTextColor(30, 41, 59);
+      doc.text("Bagis Listesi Raporu", 14, 20);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(71, 85, 105);
+      const monthNames = ["Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran", 
+                          "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik"];
+      const filterText = selectedMonth === "all" && selectedYear === "all" 
+        ? "Tum Bagislar" 
+        : `Filtre: ${selectedMonth !== "all" ? monthNames[parseInt(selectedMonth)] : "Tum Aylar"} ${selectedYear !== "all" ? selectedYear : ""}`;
+      doc.text(filterText, 14, 28);
+      doc.text(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')}`, 14, 34);
+
+      const tableData = donations.map(t => [
+        formatCurrency(t.amount).replace('₺', 'TL'),
+        t.donor || "-",
+        t.description,
+        new Intl.DateTimeFormat('tr-TR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(t.date)
+      ]);
+
+      const total = donations.reduce((sum, t) => sum + t.amount, 0);
+
+      autoTable(doc, {
+        startY: 40,
+        head: [['Tutar', 'Bagisci', 'Aciklama', 'Tarih']],
+        body: tableData,
+        foot: [[`Toplam: ${formatCurrency(total).replace('₺', 'TL')}`, '', '', '']],
+        styles: { 
+          font: 'helvetica',
+          fontSize: 9,
+          cellPadding: 3
+        },
+        headStyles: { 
+          fillColor: [71, 85, 105],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        footStyles: {
+          fillColor: [241, 245, 249],
+          textColor: [30, 41, 59],
+          fontStyle: 'bold'
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        }
+      });
+
+      const monthName = selectedMonth !== "all" ? monthNames[parseInt(selectedMonth)] : "tum";
+      const yearName = selectedYear !== "all" ? selectedYear : "yillar";
+      const fileName = `bagis-listesi-${monthName}-${yearName}.pdf`;
+      doc.save(fileName);
+      
+    } catch (error) {
+      console.error("PDF oluşturma hatası:", error);
+      alert("PDF oluşturulurken bir hata oluştu: " + error.message);
+    }
+  };
+
+  const donations = getDonations();
+  const availableYears = getAvailableYears();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8">
       <div className="max-w-5xl mx-auto">
-        {/* Header */}
+
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-slate-800 mb-2">İşlem Listesi</h1>
           <p className="text-slate-600">Tüm gelir ve gider işlemlerinizi görüntüleyin ve yönetin</p>
         </div>
 
-        {/* Stats Bar */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6 flex items-center justify-between">
           <div>
             <p className="text-sm text-slate-600">Toplam İşlem</p>
@@ -136,7 +237,6 @@ function TransactionList() {
           </div>
         </div>
 
-        {/* Transaction List */}
         <div className="space-y-4">
           {transactions.length === 0 ? (
             <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-slate-200">
@@ -155,7 +255,6 @@ function TransactionList() {
                   className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-all duration-300"
                 >
                   {isEditing ? (
-                    /* Düzenleme Modu */
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -195,32 +294,6 @@ function TransactionList() {
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">İşlem Tipi</label>
-                        <div className="flex gap-4">
-                          <label className="flex items-center cursor-pointer">
-                            <input
-                              type="radio"
-                              value="income"
-                              checked={editForm.type === "income"}
-                              onChange={(e) => setEditForm({...editForm, type: e.target.value})}
-                              className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                            />
-                            <span className="ml-2 text-slate-700">Gelir</span>
-                          </label>
-                          <label className="flex items-center cursor-pointer">
-                            <input
-                              type="radio"
-                              value="expense"
-                              checked={editForm.type === "expense"}
-                              onChange={(e) => setEditForm({...editForm, type: e.target.value})}
-                              className="w-4 h-4 text-rose-600 focus:ring-rose-500"
-                            />
-                            <span className="ml-2 text-slate-700">Gider</span>
-                          </label>
-                        </div>
-                      </div>
-
                       <div className="flex gap-3 pt-2">
                         <button
                           onClick={() => saveEdit(t.id)}
@@ -237,7 +310,6 @@ function TransactionList() {
                       </div>
                     </div>
                   ) : (
-                    /* Normal Görünüm */
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
@@ -254,7 +326,7 @@ function TransactionList() {
                         </div>
                         
                         <p className="text-slate-800 font-medium mb-1">{t.description}</p>
-                        
+
                         <div className="flex flex-wrap gap-3 text-sm text-slate-600">
                           <span className="flex items-center gap-1">
                             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -265,6 +337,12 @@ function TransactionList() {
                             {formatDate(t.date)}
                           </span>
                         </div>
+
+                        {t.donor && (
+                          <p className="text-sm text-indigo-700 mt-2 font-semibold">
+                            Bağışçı: {t.donor}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex gap-2">
@@ -286,6 +364,110 @@ function TransactionList() {
                 </div>
               );
             })
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mt-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+            <h2 className="text-2xl font-bold text-slate-800">Bağış Listesi</h2>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="px-4 py-2.5 border-2 border-blue-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-900 text-sm font-semibold shadow-md hover:shadow-lg hover:border-blue-500 transition-all"
+                style={{ 
+                  backgroundImage: 'linear-gradient(to right, rgb(239 246 255), rgb(238 242 255))',
+                  color: '#0f172a'
+                }}
+              >
+                <option value="all" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Tüm Aylar</option>
+                <option value="0" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Ocak</option>
+                <option value="1" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Şubat</option>
+                <option value="2" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Mart</option>
+                <option value="3" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Nisan</option>
+                <option value="4" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Mayıs</option>
+                <option value="5" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Haziran</option>
+                <option value="6" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Temmuz</option>
+                <option value="7" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Ağustos</option>
+                <option value="8" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Eylül</option>
+                <option value="9" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Ekim</option>
+                <option value="10" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Kasım</option>
+                <option value="11" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Aralık</option>
+              </select>
+
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="px-4 py-2.5 border-2 border-blue-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-900 text-sm font-semibold shadow-md hover:shadow-lg hover:border-blue-500 transition-all"
+                style={{ 
+                  backgroundImage: 'linear-gradient(to right, rgb(239 246 255), rgb(238 242 255))',
+                  color: '#0f172a'
+                }}
+              >
+                <option value="all" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Tüm Yıllar</option>
+                {availableYears.map(year => (
+                  <option key={year} value={year} style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>{year}</option>
+                ))}
+              </select>
+
+              <button
+                onClick={downloadPDF}
+                disabled={donations.length === 0}
+                className="px-5 py-2.5 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2 text-sm"
+              >
+                📄 PDF İndir
+              </button>
+            </div>
+          </div>
+
+          {donations.length > 0 && (
+            <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+              <p className="text-sm text-indigo-900">
+                <span className="font-semibold">Toplam {donations.length} bağış:</span>
+                <span className="ml-2 text-lg font-bold text-indigo-700">
+                  {formatCurrency(donations.reduce((sum, t) => sum + t.amount, 0))}
+                </span>
+              </p>
+            </div>
+          )}
+
+          {donations.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="text-5xl mb-3">🎁</div>
+              <p className="text-slate-600">Seçilen kriterlere uygun bağış bulunmuyor.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-100">
+                    <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Tutar</th>
+                    <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Bağışçı</th>
+                    <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Açıklama</th>
+                    <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Tarih</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {donations.map((t) => (
+                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="border border-slate-300 p-3 font-semibold text-emerald-600">
+                        {formatCurrency(t.amount)}
+                      </td>
+                      <td className="border border-slate-300 p-3 text-slate-700">
+                        {t.donor || "-"}
+                      </td>
+                      <td className="border border-slate-300 p-3 text-slate-700">
+                        {t.description}
+                      </td>
+                      <td className="border border-slate-300 p-3 text-slate-600 text-sm">
+                        {formatDate(t.date)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
