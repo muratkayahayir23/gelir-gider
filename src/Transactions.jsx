@@ -5,8 +5,9 @@ import { addDoc, collection, getDocs } from "firebase/firestore";
 function Transactions() {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
+  const [type, setType] = useState("expense"); // ✅ YENİ: işlem tipi
   const [desc, setDesc] = useState("");
-  const [donor, setDonor] = useState(""); // 🎯 YENİ
+  const [donor, setDonor] = useState("");
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
@@ -21,19 +22,20 @@ function Transactions() {
   const save = async () => {
     if (!amount || !category) return;
 
-    const selectedCat = categories.find((x) => x.id === category);
+    const selectedCategory = categories.find((x) => x.id === category);
 
     await addDoc(collection(db, "transactions"), {
       amount: Number(amount),
       categoryId: category,
+      type, // ✅ ARTIK BURADAN GELİYOR
       date: new Date(),
       description: desc,
-      type: selectedCat.type,
-      donor: selectedCat.name === "bağış" ? donor : null // 🎯 YENİ
+      donor: selectedCategory?.name === "bağış" ? donor : null,
     });
 
     setAmount("");
     setCategory("");
+    setType("expense");
     setDesc("");
     setDonor("");
   };
@@ -44,14 +46,23 @@ function Transactions() {
     <div className="bg-gray-800 p-6 rounded-xl shadow-lg space-y-4">
       <h2 className="text-2xl font-bold text-gray-200">Yeni İşlem Ekle</h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <input
           className="p-2 rounded-md bg-gray-700 text-white border border-gray-600"
           placeholder="Tutar"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
+
+        {/* ✅ Gelir / Gider seçimi */}
+        <select
+          className="p-2 rounded-md bg-gray-700 text-white border border-gray-600"
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+        >
+          <option value="income">Gelir</option>
+          <option value="expense">Gider</option>
+        </select>
 
         <select
           className="p-2 rounded-md bg-gray-700 text-white border border-gray-600"
@@ -61,12 +72,12 @@ function Transactions() {
           <option value="">Kategori seç</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name} ({c.type})
+              {c.name}
             </option>
           ))}
         </select>
 
-        {/* 🎯 Eğer kategori bağış ise Bağışçı Adı alanı göster */}
+        {/* 🎯 Eğer kategori bağış ise Bağışçı Adı */}
         {selectedCategory?.name === "bağış" && (
           <input
             className="p-2 rounded-md bg-gray-700 text-white border border-gray-600"
@@ -84,7 +95,7 @@ function Transactions() {
         />
 
         <button
-          className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-md transition"
+          className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-md transition md:col-span-5"
           onClick={save}
         >
           Kaydet
