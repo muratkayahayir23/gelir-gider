@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
 
@@ -7,6 +8,8 @@ import Categories from "./Categories";
 import Transactions from "./Transactions";
 import TransactionList from "./TransactionList";
 import Login from "./login";
+import Receipt from "./Receipt";
+import CategoryDetail from "./CategoryDetail";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -41,33 +44,43 @@ function App() {
 
   // ✅ Giriş varsa → uygulama
   return (
-  <div className="min-h-screen bg-gray-900 text-white relative">
-    
-    {/* Sağ üst logout */}
-    <button
-      onClick={logout}
-      className="absolute top-4 right-6 text-sm text-red-400 hover:text-red-500 transition"
-    >
-      Çıkış Yap
-    </button>
+    <Router basename="/gelir-gider">
+      <Routes>
+        {/* Ana sayfa */}
+        <Route path="/" element={
+          <div className="min-h-screen bg-gray-900 text-white relative">
+            {/* Sağ üst logout */}
+            <button
+              onClick={logout}
+              className="absolute top-4 right-6 text-sm text-red-400 hover:text-red-500 transition"
+            >
+              Çıkış Yap
+            </button>
 
-    <div className="max-w-4xl mx-auto p-6">
-      
-      {/* Başlık */}
-      <h1 className="text-4xl font-bold mb-8 text-center">
-        Gelir Gider Uygulaması
-      </h1>
+            <div className="max-w-4xl mx-auto p-6">
+              {/* Başlık */}
+              <h1 className="text-4xl font-bold mb-8 text-center">
+                Gelir Gider Uygulaması
+              </h1>
 
-      <div className="space-y-10">
-        <Dashboard />
-        <Categories />
-        <Transactions />
-        <TransactionList />
-      </div>
-    </div>
-  </div>
-);
+              <div className="space-y-10">
+                <Dashboard />
+                <Categories />
+                <Transactions />
+                <TransactionList />
+              </div>
+            </div>
+          </div>
+        } />
 
+        {/* Makbuz sayfası */}
+        <Route path="/receipt/:id" element={<Receipt />} />
+
+        {/* Kategori detay sayfası */}
+        <Route path="/category/:id" element={<CategoryDetail />} />
+      </Routes>
+    </Router>
+  );
 }
 
 export default App;

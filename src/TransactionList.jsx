@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { db } from "./firebase";
 import { collection, getDocs, doc, deleteDoc, updateDoc } from "firebase/firestore";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+
 function TransactionList() {
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -16,6 +19,8 @@ function TransactionList() {
   });
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [selectedYear, setSelectedYear] = useState("all");
+  const [selectedType, setSelectedType] = useState("all");
+
 
   const loadData = async () => {
     const catSnap = await getDocs(collection(db, "categories"));
@@ -107,34 +112,29 @@ function TransactionList() {
     }).format(date);
   };
 
-  const getDonations = () => {
+  const getFilteredTransactions = () => {
     return transactions.filter(t => {
-      const cat = categories.find(c => c.id === t.categoryId);
-      if (cat?.name !== "bağış") return false;
-
       const month = t.date.getMonth();
       const year = t.date.getFullYear();
 
       if (selectedMonth !== "all" && month !== parseInt(selectedMonth)) return false;
       if (selectedYear !== "all" && year !== parseInt(selectedYear)) return false;
+      if (selectedType !== "all" && t.type !== selectedType) return false;
 
       return true;
     });
   };
 
   const getAvailableYears = () => {
-    const donations = transactions.filter(t => 
-      categories.find(c => c.id === t.categoryId)?.name === "bağış"
-    );
-    const years = [...new Set(donations.map(t => t.date.getFullYear()))];
+    const years = [...new Set(transactions.map(t => t.date.getFullYear()))];
     return years.sort((a, b) => b - a);
   };
 
   const downloadPDF = () => {
-    const donations = getDonations();
-    
-    if (donations.length === 0) {
-      alert("İndirilecek bağış bulunmuyor!");
+    const filteredTransactions = getFilteredTransactions();
+
+    if (filteredTransactions.length === 0) {
+      alert("İndirilecek işlem bulunmuyor!");
       return;
     }
 
@@ -142,45 +142,49 @@ function TransactionList() {
       const doc = new jsPDF();
 
       doc.setFont("helvetica");
-      
+
       doc.setFontSize(18);
       doc.setTextColor(30, 41, 59);
-      doc.text("Bagis Listesi Raporu", 14, 20);
-      
+      doc.text("Islem Listesi Raporu", 14, 20);
+
       doc.setFontSize(10);
       doc.setTextColor(71, 85, 105);
-      const monthNames = ["Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran", 
-                          "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik"];
-      const filterText = selectedMonth === "all" && selectedYear === "all" 
-        ? "Tum Bagislar" 
+      const monthNames = ["Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran",
+        "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik"];
+      const filterText = selectedMonth === "all" && selectedYear === "all"
+        ? "Tum Islemler"
         : `Filtre: ${selectedMonth !== "all" ? monthNames[parseInt(selectedMonth)] : "Tum Aylar"} ${selectedYear !== "all" ? selectedYear : ""}`;
       doc.text(filterText, 14, 28);
       doc.text(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')}`, 14, 34);
 
-      const tableData = donations.map(t => [
-        formatCurrency(t.amount).replace('₺', 'TL'),
-        t.donor || "-",
-        t.description,
-        new Intl.DateTimeFormat('tr-TR', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
-        }).format(t.date)
-      ]);
+      const tableData = filteredTransactions.map(t => {
+        const cat = categories.find(c => c.id === t.categoryId);
+        return [
+          formatCurrency(t.amount).replace('₺', 'TL'),
+          cat?.name || "-",
+          t.donor || "-",
+          t.description,
+          new Intl.DateTimeFormat('tr-TR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          }).format(t.date)
+        ];
+      });
 
-      const total = donations.reduce((sum, t) => sum + t.amount, 0);
+      const total = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
 
       autoTable(doc, {
         startY: 40,
-        head: [['Tutar', 'Bagisci', 'Aciklama', 'Tarih']],
+        head: [['Tutar', 'Kategori', 'Bagisci', 'Aciklama', 'Tarih']],
         body: tableData,
-        foot: [[`Toplam: ${formatCurrency(total).replace('₺', 'TL')}`, '', '', '']],
-        styles: { 
+        foot: [[`Toplam: ${formatCurrency(total).replace('₺', 'TL')}`, '', '', '', '']],
+        styles: {
           font: 'helvetica',
           fontSize: 9,
           cellPadding: 3
         },
-        headStyles: { 
+        headStyles: {
           fillColor: [71, 85, 105],
           textColor: 255,
           fontStyle: 'bold'
@@ -197,16 +201,16 @@ function TransactionList() {
 
       const monthName = selectedMonth !== "all" ? monthNames[parseInt(selectedMonth)] : "tum";
       const yearName = selectedYear !== "all" ? selectedYear : "yillar";
-      const fileName = `bagis-listesi-${monthName}-${yearName}.pdf`;
+      const fileName = `islem-listesi-${monthName}-${yearName}.pdf`;
       doc.save(fileName);
-      
+
     } catch (error) {
       console.error("PDF oluşturma hatası:", error);
       alert("PDF oluşturulurken bir hata oluştu: " + error.message);
     }
   };
 
-  const donations = getDonations();
+  const filteredTransactions = getFilteredTransactions();
   const availableYears = getAvailableYears();
 
   return (
@@ -262,7 +266,7 @@ function TransactionList() {
                           <input
                             type="number"
                             value={editForm.amount}
-                            onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
+                            onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
                             className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                             placeholder="Tutar girin"
                           />
@@ -272,7 +276,7 @@ function TransactionList() {
                           <label className="block text-sm font-medium text-slate-700 mb-2">Kategori</label>
                           <select
                             value={editForm.categoryId}
-                            onChange={(e) => setEditForm({...editForm, categoryId: e.target.value})}
+                            onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })}
                             className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                           >
                             <option value="">Kategori Seçin</option>
@@ -288,7 +292,7 @@ function TransactionList() {
                         <input
                           type="text"
                           value={editForm.description}
-                          onChange={(e) => setEditForm({...editForm, description: e.target.value})}
+                          onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                           className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                           placeholder="Açıklama girin"
                         />
@@ -316,15 +320,14 @@ function TransactionList() {
                           <div className={`text-3xl font-bold ${t.type === "income" ? "text-emerald-600" : "text-rose-600"}`}>
                             {formatCurrency(t.amount)}
                           </div>
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            t.type === "income" 
-                              ? "bg-emerald-100 text-emerald-700" 
-                              : "bg-rose-100 text-rose-700"
-                          }`}>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${t.type === "income"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-rose-100 text-rose-700"
+                            }`}>
                             {t.type === "income" ? "Gelir" : "Gider"}
                           </span>
                         </div>
-                        
+
                         <p className="text-slate-800 font-medium mb-1">{t.description}</p>
 
                         <div className="flex flex-wrap gap-3 text-sm text-slate-600">
@@ -358,6 +361,12 @@ function TransactionList() {
                         >
                           🗑️ Sil
                         </button>
+                        <button
+                          onClick={() => navigate(`/receipt/${t.id}`)}
+                          className="px-5 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                        >
+                          📄 Makbuz
+                        </button>
                       </div>
                     </div>
                   )}
@@ -369,14 +378,14 @@ function TransactionList() {
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mt-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
-            <h2 className="text-2xl font-bold text-slate-800">Bağış Listesi</h2>
-            
+            <h2 className="text-2xl font-bold text-slate-800">İşlem Listesi (Filtrelenmiş)</h2>
+
             <div className="flex flex-wrap items-center gap-3">
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="px-4 py-2.5 border-2 border-blue-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-900 text-sm font-semibold shadow-md hover:shadow-lg hover:border-blue-500 transition-all"
-                style={{ 
+                style={{
                   backgroundImage: 'linear-gradient(to right, rgb(239 246 255), rgb(238 242 255))',
                   color: '#0f172a'
                 }}
@@ -400,7 +409,7 @@ function TransactionList() {
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
                 className="px-4 py-2.5 border-2 border-blue-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-900 text-sm font-semibold shadow-md hover:shadow-lg hover:border-blue-500 transition-all"
-                style={{ 
+                style={{
                   backgroundImage: 'linear-gradient(to right, rgb(239 246 255), rgb(238 242 255))',
                   color: '#0f172a'
                 }}
@@ -411,9 +420,23 @@ function TransactionList() {
                 ))}
               </select>
 
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                className="px-4 py-2.5 border-2 border-blue-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-900 text-sm font-semibold shadow-md hover:shadow-lg hover:border-blue-500 transition-all"
+                style={{
+                  backgroundImage: 'linear-gradient(to right, rgb(239 246 255), rgb(238 242 255))',
+                  color: '#0f172a'
+                }}
+              >
+                <option value="all" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Tüm İşlemler</option>
+                <option value="income" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Sadece Gelir</option>
+                <option value="expense" style={{ backgroundColor: '#1e293b', color: '#fff', padding: '8px' }}>Sadece Gider</option>
+              </select>
+
               <button
                 onClick={downloadPDF}
-                disabled={donations.length === 0}
+                disabled={filteredTransactions.length === 0}
                 className="px-5 py-2.5 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2 text-sm"
               >
                 📄 PDF İndir
@@ -421,21 +444,21 @@ function TransactionList() {
             </div>
           </div>
 
-          {donations.length > 0 && (
+          {filteredTransactions.length > 0 && (
             <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
               <p className="text-sm text-indigo-900">
-                <span className="font-semibold">Toplam {donations.length} bağış:</span>
+                <span className="font-semibold">Toplam {filteredTransactions.length} işlem:</span>
                 <span className="ml-2 text-lg font-bold text-indigo-700">
-                  {formatCurrency(donations.reduce((sum, t) => sum + t.amount, 0))}
+                  {formatCurrency(filteredTransactions.reduce((sum, t) => sum + t.amount, 0))}
                 </span>
               </p>
             </div>
           )}
 
-          {donations.length === 0 ? (
+          {filteredTransactions.length === 0 ? (
             <div className="text-center py-8">
-              <div className="text-5xl mb-3">🎁</div>
-              <p className="text-slate-600">Seçilen kriterlere uygun bağış bulunmuyor.</p>
+              <div className="text-5xl mb-3">📊</div>
+              <p className="text-slate-600">Seçilen kriterlere uygun işlem bulunmuyor.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -443,28 +466,37 @@ function TransactionList() {
                 <thead>
                   <tr className="bg-slate-100">
                     <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Tutar</th>
+                    <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Kategori</th>
                     <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Bağışçı</th>
                     <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Açıklama</th>
                     <th className="p-3 border border-slate-300 text-left font-semibold text-slate-700">Tarih</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {donations.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="border border-slate-300 p-3 font-semibold text-emerald-600">
-                        {formatCurrency(t.amount)}
-                      </td>
-                      <td className="border border-slate-300 p-3 text-slate-700">
-                        {t.donor || "-"}
-                      </td>
-                      <td className="border border-slate-300 p-3 text-slate-700">
-                        {t.description}
-                      </td>
-                      <td className="border border-slate-300 p-3 text-slate-600 text-sm">
-                        {formatDate(t.date)}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredTransactions.map((t) => {
+                    const cat = categories.find(c => c.id === t.categoryId);
+                    return (
+                      <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="border border-slate-300 p-3 font-semibold text-emerald-600">
+                          {formatCurrency(t.amount)}
+                        </td>
+                        <td className="border border-slate-300 p-3 text-slate-700">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-sm font-medium">
+                            {cat?.name || "-"}
+                          </span>
+                        </td>
+                        <td className="border border-slate-300 p-3 text-slate-700">
+                          {t.donor || "-"}
+                        </td>
+                        <td className="border border-slate-300 p-3 text-slate-700">
+                          {t.description}
+                        </td>
+                        <td className="border border-slate-300 p-3 text-slate-600 text-sm">
+                          {formatDate(t.date)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
